@@ -192,32 +192,34 @@ class RESTfulAPI_BasicSerializer implements RESTfulAPI_Serializer
     // iterate '_many' relations
     foreach ($many_relations as $relationName => $relationClassname)
     {
+	if($this->isIncluded($dataObject->ClassName, $relationName)){
     	//get the DataList for this realtion's name
       $dataList = $dataObject->{$relationName}();
 
-      //if there actually are objects in the relation
-      if ( $dataList->count() )
-      {
-      	// check if this relation should be embedded
-      	if ( $this->isEmbeddable($dataObject->ClassName, $relationName) && RESTfulAPI::isAPIEnabled($relationClassname) )
-	      {
-	      	// get the relation's record(s) ready to embed
-	      	$embedData = $this->getEmbedData($dataObject, $relationName);
-	      	// embed the data if any
-	      	if ( $embedData !== null )
-	      	{
-	      		$columnName = $this->serializeColumnName( $relationName );
-	      		$formattedDataObjectMap[$columnName] = $embedData;
-	      	}
-	      }
-	      else{
-	      	// set column value to ID list
-	        $idList = $dataList->map('ID', 'ID')->keys();
+		//if there actually are objects in the relation
+		if ( $dataList->count() )
+		{
+			// check if this relation should be embedded
+			if ( $this->isEmbeddable($dataObject->ClassName, $relationName) && RESTfulAPI::isAPIEnabled($relationClassname) )
+			{
+				// get the relation's record(s) ready to embed
+				$embedData = $this->getEmbedData($dataObject, $relationName);
+				// embed the data if any
+				if ( $embedData !== null )
+				{
+					$columnName = $this->serializeColumnName( $relationName );
+					$formattedDataObjectMap[$columnName] = $embedData;
+				}
+			}
+			else{
+				// set column value to ID list
+			  $idList = $dataList->map('ID', 'ID')->keys();
 
-	        $columnName = $this->serializeColumnName( $relationName );
-	        $formattedDataObjectMap[$columnName] = $idList;
-	      }
-      }
+			  $columnName = $this->serializeColumnName( $relationName );
+			  $formattedDataObjectMap[$columnName] = $idList;
+			}
+		}
+	}
     }
 
     if ( $many_many_extraFields )
@@ -280,7 +282,9 @@ class RESTfulAPI_BasicSerializer implements RESTfulAPI_Serializer
     {
       $formattedDataObjectMap = $dataObject->onAfterSerialize( $formattedDataObjectMap );
     }
-
+    
+    $dataObject->extend('onAfterSerialize', $formattedDataObjectMap);
+    
     return $formattedDataObjectMap;
 	}
 
@@ -377,5 +381,12 @@ class RESTfulAPI_BasicSerializer implements RESTfulAPI_Serializer
     }
 
     return false;
+  }
+  
+  protected function isIncluded($model, $relation){
+	if($exclude = singleton($model)->stat('exclude_from_api')){
+		return !in_array($relation, $exclude);
+	}
+	return true;
   }
 }

@@ -218,8 +218,25 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 				foreach ($queryParams as $param) {
 
 					if ($param['Column']) {
+						
+						//check joins
+						if(count($join = explode('_', $param['Column'])) > 1){
+							//following is for a many_many join
+							$table = $join[0];
+							$queryField = $join[1];
+							$value = $param['Value'];
+							$tableID = $table . 'ID';
+							$modelID = $model . 'ID';
+							$join_table = $table . '_' . $model . 's';
+							$return = $return
+							->leftjoin($join_table, "\"$join_table\".\"$modelID\" = \"$model\".\"ID\"")
+							->leftjoin($table, "\"$table\".\"ID\" = \"$join_table\".\"$tableID\"")	  
+							->where("\"$table\".\"$queryField\" = '$value'");
+							
+						}
+						
 						// handle sorting by column
-						if ($param['Modifier'] === 'sort') {
+						else if ($param['Modifier'] === 'sort') {
 							$return = $return->sort(array(
 							    $param['Column'] => $param['Value']
 								  ));

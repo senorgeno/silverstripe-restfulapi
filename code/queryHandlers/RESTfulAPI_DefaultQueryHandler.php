@@ -168,13 +168,30 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 				continue;
 
 			$param = array();
-
+						
 			$key__mod = explode(
 				  $searchFilterModifiersSeparator, $key__mod
 			);
-
+			
 			$param['Column'] = $this->deSerializer->unformatName($key__mod[0]);
+			
+			if(strpos($param['Column'], '_')){
+				$relations = explode('_', $param['Column']);
+				$param['Relation'] = $relations[0];
 
+				if(strpos($relations[1], ':')){
+					$relationModifier = explode(':', $relations[1]);
+					$param['RelationColumn'] = $relationModifier[0];
+					$param['RelationModifier'] = $relationModifier[1];
+					
+				}else{
+					$param['RelationColumn'] = $relations[1];
+					
+				}
+				$param['RelationValue'] = $value;
+
+			}
+			
 			$param['Value'] = $value;
 
 			if (isset($key__mod[1])) {
@@ -216,22 +233,58 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 
 			if (count($queryParams) > 0) {
 				foreach ($queryParams as $param) {
-
+					
 					if ($param['Column']) {
 						
 						//check joins
-						if(count($join = explode('_', $param['Column'])) > 1){
-							//following is for a many_many join
-							$table = $join[0];
-							$queryField = $join[1];
-							$value = $param['Value'];
-							$tableID = $table . 'ID';
+						if(isset($param['Relation'])){
+			
+							$relation = $param['Relation']; //the relation we want to join on for searching
+							$column = $param['RelationColumn']; // the column on the join table we wish to query
+							$value = $param['Value'];// the actual value to query
+							
 							$modelID = $model . 'ID';
-							$join_table = $table . '_' . $model . 's';
-							$return = $return
-							->leftjoin($join_table, "\"$join_table\".\"$modelID\" = \"$model\".\"ID\"")
-							->leftjoin($table, "\"$table\".\"ID\" = \"$join_table\".\"$tableID\"")	  
-							->where("\"$table\".\"$queryField\" = '$value'");
+							$table = null;
+							$relationID = null;
+							
+							$has_one = singleton($model)->stat('has_one');
+							$has_many = singleton($model)->stat('has_many');
+							$many_many = singleton($model)->stat('many_many');
+							$belongs_many_many = singleton($model)->stat('belongs_many_many');
+							
+							//has one
+							if(isset($has_one[$relation])){
+								$relationID = $has_one[$relation] . 'ID';
+								$column = isset($param['RelationModifier']) ? $column . ':' . $param['RelationModifier'] : $column;
+								
+								$return = $return
+								  ->leftjoin($relation, "\"$relation\".\"ID\" = \"$model\".\"$relationID\"")
+								  ->filter(array($relation . '.' . $column =>  $value));
+								
+							}
+							elseif(isset($has_many[$relation])){
+								user_error('Yet to implement'); exit;
+							}
+							// many_many or belongs_many_many
+							elseif(isset($belongs_many_many[$relation]) || isset($many_many[$relation])){
+								//if this is many_many or belongs many many get the table we wish to join on
+								if(isset($many_many[$relation])){
+									$table = $many_many[$relation];
+								} elseif(isset($belongs_many_many[$relation])){
+									$table = $belongs_many_many[$relation];
+								}
+								//the relation table ID
+								$relationID = $table . 'ID';
+								//the join table
+								$join_table = $table . '_' . $model . 's';
+								
+								$return = $return
+								->leftjoin($join_table, "\"$join_table\".\"$modelID\" = \"$model\".\"ID\"")
+								->leftjoin($table, "\"$table\".\"ID\" = \"$join_table\".\"$relationID\"")	  
+								->where("\"$table\".\"$column\" = '$value'");
+							}
+								
+							
 							
 						}
 						

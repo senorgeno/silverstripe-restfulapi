@@ -168,21 +168,26 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 				continue;
 
 			$param = array();
-						
+			$param['Column'] = null;
+			$param['Relation'] = null;
+			$param['Modifier'] = null;
+			
 			$key__mod = explode(
 				  $searchFilterModifiersSeparator, $key__mod
 			);
-			
-			$param['Column'] = $this->deSerializer->unformatName($key__mod[0]);
+
 			
 			//for return the count only
-			if($param['Column'] == 'count' || $param['Column'] == 'Count'){
-				$param['Column'] = null;
+			if($key__mod[0] == 'count' || $key__mod[0] == 'Count'){
 				$param['Count'] = true;
 			}
-			
-			if(strpos($param['Column'], '_')){
-				$relations = explode('_', $param['Column']);
+	
+			else if($key__mod[0] == 'sort' || $key__mod[0] == 'sort'){
+				$param['Sort'] = $value;
+			}
+			//check for relations in the format of RELATION_RELATIONCOLUMN=RELATIONVALUE e.g. ? for many_many Groups_Title or Application_ for a has_one
+			else if(strpos($key__mod[0], '_')){
+				$relations = explode('_', $key__mod[0]);
 				$param['Relation'] = $relations[0];
 
 				if(strpos($relations[1], ':')){
@@ -195,15 +200,17 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 					
 				}
 				$param['RelationValue'] = $value;
-
 			}
-			
-			$param['Value'] = $value;
+			else{
+				$param['Column'] = $this->deSerializer->unformatName($key__mod[0]);
 
-			if (isset($key__mod[1])) {
-				$param['Modifier'] = $key__mod[1];
-			} else {
-				$param['Modifier'] = null;
+				$param['Value'] = $value;
+
+				if (isset($key__mod[1])) {
+					$param['Modifier'] = $key__mod[1];
+				} else {
+					$param['Modifier'] = null;
+				}
 			}
 
 			array_push($parsedParams, $param);
@@ -240,14 +247,10 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 			if (count($queryParams) > 0) {
 				foreach ($queryParams as $param) {
 					
-					if ($param['Column']) {
-						
-						//check joins
-						if(isset($param['Relation'])){
+					//check joins
+					if($param['Relation']){
 			
-							$relation = $param['Relation']; //the relation we want to join on for searching
-							$column = $param['RelationColumn']; // the column on the join table we wish to query
-							$value = $param['Value'];// the actual value to query
+							$relation = $param['Relation']; //the relation we want to join
 							
 							$modelID = $model . 'ID';
 							$table = null;
@@ -265,9 +268,9 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 								$return = $return
 								  ->leftjoin($relation, "\"$relation\".\"ID\" = \"$model\".\"$relationID\"");
 								//now lets check if we are actually querying something here
-								if(!empty($param['Value'])){
-									$column = isset($param['RelationModifier']) ? $column . ':' . $param['RelationModifier'] : $column;
-									$return = $return->filter(array($relation . '.' . $column =>  $value));
+								if($param['RelationValue'] && $param['RelationColumn']){
+									$column = isset($param['RelationModifier']) ? $param['RelationColumn'] . ':' . $param['RelationModifier'] : $param['RelationColumn'];
+									$return = $return->filter(array($relation . '.' . $column =>  $param['RelationValue']));
 								}
 								
 							}
@@ -289,16 +292,18 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 								
 								$return = $return
 								->leftjoin($join_table, "\"$join_table\".\"$modelID\" = \"$model\".\"ID\"")
-								->leftjoin($table, "\"$table\".\"ID\" = \"$join_table\".\"$relationID\"")	  
-								->where("\"$table\".\"$column\" = '$value'");
+								->leftjoin($table, "\"$table\".\"ID\" = \"$join_table\".\"$relationID\"");
+								
+								if($param['RelationValue']){
+									$return = $return->where("\"$table\".\"" . $param['RelationColumn'] . "\" = '" . $param['RelationValue'] . "'");
+								}
 							}
 								
-							
-							
-						}
+					}
+					else if ($param['Column']) {
 						
 						// handle sorting by column
-						else if ($param['Modifier'] === 'sort') {
+						if ($param['Modifier'] === 'sort') {
 							$return = $return->sort(array(
 							    $param['Column'] => $param['Value']
 								  ));
@@ -315,7 +320,8 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 							    $param['Column'] => $param['Value']
 								  ));
 						}
-					} else {
+					} 
+					else {
 						// random
 						if ($param['Modifier'] === 'rand') {
 							// rand + seed
@@ -341,12 +347,18 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 					}
 				}
 			}
-
+			// tack on custom queries
+			if(isset($param['Sort'])){
+				$return = $return->sort(
+					$param['Sort'] 
+				);
+			}
+			
 			if (isset($param['Count'])){
 				return array('Count' => $return->count());
 				
 			}
-			
+
 			//sets default limit if none given
 			$limits = $return->dataQuery()->query()->getLimit();
 			$limitConfig = Config::inst()->get('RESTfulAPI_DefaultQueryHandler', 'max_records_limit');

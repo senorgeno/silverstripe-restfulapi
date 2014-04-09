@@ -175,6 +175,12 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 			
 			$param['Column'] = $this->deSerializer->unformatName($key__mod[0]);
 			
+			//for return the count only
+			if($param['Column'] == 'count' || $param['Column'] == 'Count'){
+				$param['Column'] = null;
+				$param['Count'] = true;
+			}
+			
 			if(strpos($param['Column'], '_')){
 				$relations = explode('_', $param['Column']);
 				$param['Relation'] = $relations[0];
@@ -252,14 +258,17 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 							$many_many = singleton($model)->stat('many_many');
 							$belongs_many_many = singleton($model)->stat('belongs_many_many');
 							
-							//has one
+							//has one join
 							if(isset($has_one[$relation])){
 								$relationID = $has_one[$relation] . 'ID';
-								$column = isset($param['RelationModifier']) ? $column . ':' . $param['RelationModifier'] : $column;
-								
+
 								$return = $return
-								  ->leftjoin($relation, "\"$relation\".\"ID\" = \"$model\".\"$relationID\"")
-								  ->filter(array($relation . '.' . $column =>  $value));
+								  ->leftjoin($relation, "\"$relation\".\"ID\" = \"$model\".\"$relationID\"");
+								//now lets check if we are actually querying something here
+								if(!empty($param['Value'])){
+									$column = isset($param['RelationModifier']) ? $column . ':' . $param['RelationModifier'] : $column;
+									$return = $return->filter(array($relation . '.' . $column =>  $value));
+								}
 								
 							}
 							elseif(isset($has_many[$relation])){
@@ -333,6 +342,11 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 				}
 			}
 
+			if (isset($param['Count'])){
+				return array('Count' => $return->count());
+				
+			}
+			
 			//sets default limit if none given
 			$limits = $return->dataQuery()->query()->getLimit();
 			$limitConfig = Config::inst()->get('RESTfulAPI_DefaultQueryHandler', 'max_records_limit');
@@ -340,6 +354,9 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 			if (is_array($limits) && !array_key_exists('limit', $limits) && $limitConfig >= 0) {
 				$return = $return->limit($limitConfig);
 			}
+			
+			
+			
 		}
 
 		return $return;

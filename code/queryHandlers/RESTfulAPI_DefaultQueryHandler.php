@@ -301,7 +301,6 @@ class RESTfulAPI_DefaultQueryHandler implements RESTfulAPI_QueryHandler {
 								
 					}
 					else if ($param['Column']) {
-						
 						// handle sorting by column
 						if ($param['Modifier'] === 'sort') {
 							$return = $return->sort(array(
